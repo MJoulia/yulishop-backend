@@ -1,15 +1,15 @@
-import "dotenv/config";
-import express from "express";
-import cors from "cors";
-import mongoose from "mongoose";
+require("dotenv").config();
+const express = require("express");
+const cors = require("cors");
+const mongoose = require("mongoose");
 
 // Routes
-import authRoutes from "./src/routes/auth.js";
-//import productRoutes from "./src/routes/products.js";
-//import reviewRoutes from "./src/routes/reviews.js";
+const authRoutes = require("./src/routes/auth.js");
+const perfumeRoutes = require("./src/routes/perfumes.js");
+const reviewRoutes = require("./src/routes/reviews.js");
 
 // (facultatif) sécurité de base
-// import helmet from "helmet";
+// const helmet = require("helmet");
 
 const app = express();
 
@@ -23,9 +23,10 @@ app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
 // Mount routes
 app.use("/api/auth", authRoutes);
-///app.use("/api/perfumes",  productRoutes);
+app.use("/api/perfumes", perfumeRoutes);
 app.use("/api/reviews", reviewRoutes);
 app.get("/achraf", (_req, res) => res.send("Ywowow ow owow wowo wow owo wowow owow owwoowowwo"));
+
 // Root
 app.get("/", (_req, res) => res.send("YuliShop API is running"));
 
@@ -48,7 +49,7 @@ async function start() {
 
     // 🔎 index texte pour la recherche ?search=
     // (ne plante pas si déjà créé)
-    const { default: Perfume } = await import("./src/models/Perfume.js");
+    const Perfume = require("./src/models/Perfume.js");
     try {
       await Perfume.collection.createIndex({
         name: "text",
@@ -78,4 +79,5 @@ async function start() {
     process.exit(1);
   }
 }
+
 start();

@@ -1,9 +1,8 @@
-// src/routes/perfumes.js
-import { Router } from "express";
+const express = require("express");
+const Perfume = require("../models/Perfume.js");
+const Review = require("../models/Review.js");
 
-import Review from "../models/Review.js";
-
-const router = Router();
+const router = express.Router();
 
 /* -------------------- Helpers -------------------- */
 const isObjectId = (v = "") => /^[0-9a-fA-F]{24}$/.test(String(v));
@@ -19,6 +18,11 @@ function slugify(str) {
 }
 
 /* -------------------- GET /api/perfumes -------------------- */
+
+router.get("/achraf", async (req, res, next) => {
+  console.log("asdasdas")
+  res.json(docs)
+})
 
 router.get("/", async (req, res, next) => {
   try {
@@ -126,3 +130,5 @@ router.get("/:idOrSlug/reviews", async (req, res, next) => {
     next(err);
   }
 });
+
+module.exports = router;

@@ -1,5 +1,4 @@
 const mongoose = require("mongoose");
-const Perfume = require("./Perfume");
 
 const ReviewSchema = new mongoose.Schema({
   perfume: { type: mongoose.Schema.Types.ObjectId, ref: "Perfume", required: true, index: true },
@@ -15,6 +14,9 @@ const ReviewSchema = new mongoose.Schema({
 ReviewSchema.index({ perfume: 1, user: 1 }, { unique: true, partialFilterExpression: { user: { $type: "objectId" } } });
 
 async function recomputePerfumeRating(perfumeId) {
+  const Perfume = require("./Perfume.js");
+  const Review = mongoose.model("Review");
+  
   const agg = await Review.aggregate([
     { $match: { perfume: perfumeId, status: "visible" } },
     { $group: { _id: "$perfume", count: { $sum: 1 }, avg: { $avg: "$rating" } } },
@@ -28,8 +30,7 @@ async function recomputePerfumeRating(perfumeId) {
 // Hooks
 ReviewSchema.post("save", function () { recomputePerfumeRating(this.perfume); });
 ReviewSchema.post("findOneAndUpdate", function (doc) { if (doc) recomputePerfumeRating(doc.perfume); });
-ReviewSchema.post("remove", function (doc) { if (doc) recomputePerfumeRating(doc.perfume); });
+ReviewSchema.post("deleteOne", { document: true }, function (doc) { if (doc) recomputePerfumeRating(doc.perfume); });
 ReviewSchema.post("findOneAndDelete", function (doc) { if (doc) recomputePerfumeRating(doc.perfume); });
 
-const Review = mongoose.model("Review", ReviewSchema);
-module.exports = Review;
+module.exports = mongoose.model("Review", ReviewSchema);
