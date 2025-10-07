@@ -1,11 +1,10 @@
-const express = require("express");
-const Review = require("../models/Review");
-const Perfume = require("../models/Perfume");
-// const authRequired = require("../middlewares/authRequired"); // à brancher si besoin
+import express from "express";
+import Review from "../models/Review.js";
+import Perfume from "../models/Perfume.js";
 
 const router = express.Router();
 
-// Create review
+// Create review - POST /api/perfumes/:perfumeId/reviews
 router.post("/perfumes/:perfumeId/reviews", async (req, res) => {
   try {
     const { perfumeId } = req.params;
@@ -14,8 +13,12 @@ router.post("/perfumes/:perfumeId/reviews", async (req, res) => {
     const perfume = await Perfume.findById(perfumeId);
     if (!perfume) return res.status(404).json({ message: "Parfum introuvable" });
 
-    if (![1,2,3,4,5].includes(Number(rating))) return res.status(400).json({ message: "rating 1-5" });
-    if (!comment || comment.trim().length < 3) return res.status(400).json({ message: "comment trop court" });
+    if (![1,2,3,4,5].includes(Number(rating))) {
+      return res.status(400).json({ message: "rating 1-5" });
+    }
+    if (!comment || comment.trim().length < 3) {
+      return res.status(400).json({ message: "comment trop court" });
+    }
 
     const review = await Review.create({
       perfume: perfume._id,
@@ -33,8 +36,8 @@ router.post("/perfumes/:perfumeId/reviews", async (req, res) => {
   }
 });
 
-// Update review
-router.patch("/:id", async (req, res) => {
+// Update review - PATCH /api/reviews/:id
+router.patch("/reviews/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { rating, title, comment, status } = req.body;
@@ -59,8 +62,8 @@ router.patch("/:id", async (req, res) => {
   }
 });
 
-// Delete review
-router.delete("/:id", async (req, res) => {
+// Delete review - DELETE /api/reviews/:id
+router.delete("/reviews/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const review = await Review.findOneAndDelete({ _id: id });
@@ -72,4 +75,4 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;
