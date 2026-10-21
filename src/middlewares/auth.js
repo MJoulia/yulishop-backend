@@ -1,95 +1,63 @@
-// middleware/auth.js
-const jwt = require("jsonwebtoken");
-const { User } = require("../models/User.js");
+import jwt from "jsonwebtoken";
+import config from "../config.js";
+import User from "../models/User.js";
 
-// petit util: message uniforme
 const ERR = {
-  MISSING: { status: 401, msg: "Token manquant" },
-  INVALID: { status: 401, msg: "Token invalide ou expiré" },
-  UNAUTH:  { status: 401, msg: "Non authentifié" },
-  FORBID:  { status: 403, msg: "Accès refusé (rôle insuffisant)" },
+  MISSING: { status: 401, message: "Missing token" },
+  INVALID: { status: 401, message: "Invalid or expired token" },
+  FORBID: { status: 403, message: "Insufficient role" },
 };
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
-if (!process.env.JWT_SECRET) {
-  console.warn("[auth] JWT_SECRET non défini – utilisation d'un secret de dev (à NE PAS utiliser en prod).");
+export function signToken(user) {
+  return jwt.sign({ sub: String(user._id), role: user.role }, config.jwtSecret, {
+    algorithm: "HS256",
+    expiresIn: config.jwtExpiresIn,
+  });
 }
 
-/**
- * Exige un JWT "Authorization: Bearer <token>"
- * - Vérifie l'algo et tolère un petit drift d'horloge
- * - Charge l'utilisateur en DB (et refuse si absent/inactif)
- * - Attache req.user = { _id, role, email, ... }
- */
-async function requireAuth(req, res, next) {
+function readBearer(req) {
+  const h = (req.headers.authorization || "").trim();
+  return h.toLowerCase().startsWith("bearer ") ? h.slice(7).trim() : null;
+}
+
+async function loadUser(token) {
+  const payload = jwt.verify(token, config.jwtSecret, { algorithms: ["HS256"], clockTolerance: 30 });
+  if (!payload.sub) return null;
+  const user = await User.findById(payload.sub).select("_id role email firstName lastName isActive");
+  return user && user.isActive !== false ? user : null;
+}
+
+/** Requires "Authorization: Bearer <token>" and attaches req.user. */
+export async function requireAuth(req, res, next) {
+  const token = readBearer(req);
+  if (!token) return res.status(ERR.MISSING.status).json({ message: ERR.MISSING.message });
   try {
-    const h = (req.headers.authorization || "").trim();
-    const token = h.toLowerCase().startsWith("bearer ") ? h.slice(7) : null;
-    if (!token) return res.status(ERR.MISSING.status).json({ message: ERR.MISSING.msg });
-
-    let payload;
-    try {
-      payload = jwt.verify(token, JWT_SECRET, {
-        algorithms: ["HS256"],       // adapte à ton algo
-        clockTolerance: 30,          // secondes de tolérance
-      });
-    } catch {
-      return res.status(ERR.INVALID.status).json({ message: ERR.INVALID.msg });
-    }
-
-    const userId = payload.sub || payload.id || payload.userId;
-    if (!userId) return res.status(ERR.INVALID.status).json({ message: ERR.INVALID.msg });
-
-    // Charge l'user (sélection minimale)
-    const user = await User.findById(userId).select("_id role email firstName lastName isActive");
-    if (!user || user.isActive === false) {
-      return res.status(ERR.UNAUTH.status).json({ message: ERR.UNAUTH.msg });
-    }
-
-    // Attache un objet user standardisé
-    req.user = {
-      _id: user._id,
-      role: user.role,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-    };
-
-    return next();
-  } catch (e) {
-    console.error("[requireAuth]", e);
-    return res.status(ERR.INVALID.status).json({ message: ERR.INVALID.msg });
+    const user = await loadUser(token);
+    if (!user) return res.status(ERR.INVALID.status).json({ message: ERR.INVALID.message });
+    req.user = user;
+    next();
+  } catch {
+    res.status(ERR.INVALID.status).json({ message: ERR.INVALID.message });
   }
 }
 
-/**
- * Exige un rôle unique (ex: "admin")
- */
-function requireRole(role) {
-  return (req, res, next) => {
-    if (!req.user) return res.status(ERR.UNAUTH.status).json({ message: ERR.UNAUTH.msg });
-    if (req.user.role !== role) {
-      return res.status(ERR.FORBID.status).json({ message: ERR.FORBID.msg });
+/** Attaches req.user when a valid token is present, but never rejects. */
+export async function optionalAuth(req, _res, next) {
+  const token = readBearer(req);
+  if (token) {
+    try {
+      req.user = (await loadUser(token)) || undefined;
+    } catch {
+      req.user = undefined;
     }
+  }
+  next();
+}
+
+export function requireRole(...roles) {
+  return (req, res, next) => {
+    if (!req.user) return res.status(ERR.MISSING.status).json({ message: ERR.MISSING.message });
+    if (!roles.includes(req.user.role)) return res.status(ERR.FORBID.status).json({ message: ERR.FORBID.message });
     next();
   };
 }
-
-/**
- * Exige au moins un rôle parmi la liste (ex: admin OU moderator)
- */
-function requireAnyRole(...roles) {
-  return (req, res, next) => {
-    if (!req.user) return res.status(ERR.UNAUTH.status).json({ message: ERR.UNAUTH.msg });
-    if (!roles.includes(req.user.role)) {
-      return res.status(ERR.FORBID.status).json({ message: ERR.FORBID.msg });
-    }
-    next();
-  };
-}
-
-module.exports = {
-  requireAuth,
-  requireRole,
-  requireAnyRole,
-};
