@@ -1,0 +1,21 @@
+# Local stack: API + MongoDB. Usage: JWT_SECRET=... docker compose up --build
+services:
+  mongo:
+    image: mongo:7
+    volumes: [mongo-data:/data/db]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      retries: 5
+  api:
+    build: .
+    ports: ["5124:5124"]
+    environment:
+      NODE_ENV: production
+      MONGODB_URI: mongodb://mongo:27017/yulishop
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+    depends_on:
+      mongo: { condition: service_healthy }
+volumes:
+  mongo-data:

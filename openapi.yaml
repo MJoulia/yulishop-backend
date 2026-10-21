@@ -1,0 +1,369 @@
+openapi: 3.0.3
+info:
+  title: YuliShop API
+  version: 2.0.0
+  description: REST API for the YuliShop perfume store. Prices and totals are always computed server-side; payment is simulated.
+servers:
+  - url: http://localhost:5124
+tags:
+  - name: Auth
+  - name: Catalogue
+  - name: Reviews
+  - name: Orders
+  - name: Admin
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  schemas:
+    Error:
+      type: object
+      properties:
+        message: { type: string }
+        errors:
+          type: array
+          items: { type: object, properties: { path: { type: string }, message: { type: string } } }
+    User:
+      type: object
+      properties:
+        id: { type: string }
+        email: { type: string, format: email }
+        firstName: { type: string }
+        lastName: { type: string }
+        role: { type: string, enum: [user, admin] }
+    AuthResponse:
+      type: object
+      properties:
+        token: { type: string }
+        user: { $ref: "#/components/schemas/User" }
+    Variant:
+      type: object
+      required: [sku, volumeMl, priceCents]
+      properties:
+        sku: { type: string, example: "YS-ROSE-50" }
+        volumeMl: { type: integer, example: 50 }
+        priceCents: { type: integer, example: 7900 }
+        stock: { type: integer, example: 12 }
+    Perfume:
+      type: object
+      properties:
+        _id: { type: string }
+        slug: { type: string, example: "rose-de-mai" }
+        name: { type: string }
+        brand: { type: string }
+        description: { type: string }
+        olfactoryFamilies: { type: array, items: { type: string } }
+        genderTarget: { type: string, enum: [unisex, femme, homme, autre] }
+        concentration: { type: string, enum: [EDC, EDT, EDP, Extrait, Autre] }
+        topNotes: { type: array, items: { type: string } }
+        heartNotes: { type: array, items: { type: string } }
+        baseNotes: { type: array, items: { type: string } }
+        images: { type: array, items: { type: string } }
+        variants: { type: array, items: { $ref: "#/components/schemas/Variant" } }
+        priceCents: { type: integer, description: "Lowest variant price (derived)" }
+        stock: { type: integer, description: "Sum of variant stock (derived)" }
+        ratingAvg: { type: number }
+        ratingCount: { type: integer }
+    PerfumeInput:
+      type: object
+      required: [name, brand]
+      properties:
+        name: { type: string }
+        brand: { type: string }
+        description: { type: string }
+        olfactoryFamilies: { type: array, items: { type: string } }
+        variants: { type: array, items: { $ref: "#/components/schemas/Variant" } }
+    Review:
+      type: object
+      properties:
+        _id: { type: string }
+        perfume: { type: string }
+        authorName: { type: string }
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        title: { type: string }
+        comment: { type: string }
+        verifiedPurchase: { type: boolean }
+        status: { type: string, enum: [visible, hidden, pending] }
+        createdAt: { type: string, format: date-time }
+    ReviewInput:
+      type: object
+      required: [rating, comment]
+      properties:
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        title: { type: string, maxLength: 120 }
+        comment: { type: string, minLength: 3, maxLength: 2000 }
+    OrderInput:
+      type: object
+      required: [customer, items]
+      properties:
+        customer:
+          type: object
+          required: [firstName, lastName, email, street, city, postalCode, country]
+          properties:
+            firstName: { type: string }
+            lastName: { type: string }
+            email: { type: string, format: email }
+            phone: { type: string }
+            street: { type: string }
+            city: { type: string }
+            postalCode: { type: string }
+            country: { type: string }
+            notes: { type: string }
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [productId, sku]
+            properties:
+              productId: { type: string }
+              sku: { type: string }
+              quantity: { type: integer, minimum: 1, maximum: 20 }
+        shippingMethod: { type: string, enum: [standard, express], default: standard }
+    Order:
+      type: object
+      properties:
+        id: { type: string }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              sku: { type: string }
+              name: { type: string }
+              unitPriceCents: { type: integer }
+              quantity: { type: integer }
+              lineTotalCents: { type: integer }
+        subtotalCents: { type: integer }
+        shippingCents: { type: integer }
+        totalCents: { type: integer }
+        paymentStatus: { type: string, enum: [simulated, pending, paid, refunded] }
+        status: { type: string, enum: [placed, shipped, delivered, cancelled] }
+  responses:
+    BadRequest: { description: Validation failed, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    Unauthorized: { description: Missing or invalid token, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    Forbidden: { description: Insufficient role, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    NotFound: { description: Not found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+paths:
+  /healthz:
+    get:
+      summary: Liveness and DB status
+      responses: { "200": { description: Healthy }, "503": { description: Database disconnected } }
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Create an account (role "user")
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+                firstName: { type: string }
+                lastName: { type: string }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/AuthResponse" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { description: Email already registered }
+        "429": { description: Too many attempts }
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in and receive a JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties: { email: { type: string }, password: { type: string } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/AuthResponse" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { description: Too many attempts }
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      security: [{ bearerAuth: [] }]
+      summary: Current user
+      responses:
+        "200": { description: OK }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/perfumes:
+    get:
+      tags: [Catalogue]
+      summary: List perfumes (total in X-Total-Count header)
+      parameters:
+        - { in: query, name: search, schema: { type: string } }
+        - { in: query, name: brand, schema: { type: string } }
+        - { in: query, name: family, schema: { type: string }, description: Comma-separated olfactory families }
+        - { in: query, name: minPriceCents, schema: { type: integer } }
+        - { in: query, name: maxPriceCents, schema: { type: integer } }
+        - { in: query, name: sort, schema: { type: string, enum: [rating, price_asc, price_desc, recent] } }
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+        - { in: query, name: offset, schema: { type: integer, minimum: 0, default: 0 } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Perfume" } } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /api/perfumes/{idOrSlug}:
+    get:
+      tags: [Catalogue]
+      summary: Get one perfume by id or slug
+      parameters: [{ in: path, name: idOrSlug, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Perfume" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/perfumes/{idOrSlug}/reviews:
+    get:
+      tags: [Reviews]
+      summary: Visible reviews, paginated
+      parameters:
+        - { in: path, name: idOrSlug, required: true, schema: { type: string } }
+        - { in: query, name: page, schema: { type: integer, default: 1 } }
+        - { in: query, name: limit, schema: { type: integer, default: 10, maximum: 50 } }
+        - { in: query, name: sort, schema: { type: string, enum: [recent, best] } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reviews: { type: array, items: { $ref: "#/components/schemas/Review" } }
+                  total: { type: integer }
+                  page: { type: integer }
+                  limit: { type: integer }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [Reviews]
+      security: [{ bearerAuth: [] }]
+      summary: Create or update my review (one per user and perfume)
+      parameters: [{ in: path, name: idOrSlug, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ReviewInput" } } } }
+      responses:
+        "201": { description: Created (includes updated ratingAvg/ratingCount) }
+        "200": { description: Updated existing review }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/perfumes/{idOrSlug}/reviews/me:
+    get:
+      tags: [Reviews]
+      security: [{ bearerAuth: [] }]
+      summary: My review for this perfume
+      parameters: [{ in: path, name: idOrSlug, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Review" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/reviews/{id}:
+    patch:
+      tags: [Reviews]
+      security: [{ bearerAuth: [] }]
+      summary: Edit my review (admins may also change status)
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/ReviewInput" } } } }
+      responses:
+        "200": { description: OK }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Reviews]
+      security: [{ bearerAuth: [] }]
+      summary: Delete my review (or any review as admin)
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: OK }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/orders:
+    post:
+      tags: [Orders]
+      security: [{ bearerAuth: [] }]
+      summary: Place an order (server computes prices, reserves stock atomically)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/OrderInput" } } } }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Order" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { description: Not enough stock }
+  /api/orders/mine:
+    get:
+      tags: [Orders]
+      security: [{ bearerAuth: [] }]
+      summary: My orders
+      responses: { "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Order" } } } } } }
+  /api/orders/{id}:
+    get:
+      tags: [Orders]
+      security: [{ bearerAuth: [] }]
+      summary: One of my orders (admins can read any)
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: OK }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/admin/perfumes:
+    get:
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      summary: Search perfumes (substring on name/brand)
+      parameters: [{ in: query, name: search, schema: { type: string } }]
+      responses:
+        "200": { description: OK }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      summary: Create perfume
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/PerfumeInput" } } } }
+      responses:
+        "201": { description: Created }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/admin/perfumes/{id}:
+    put:
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      summary: Update perfume
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/PerfumeInput" } } } }
+      responses: { "200": { description: OK }, "404": { $ref: "#/components/responses/NotFound" } }
+    delete:
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      summary: Delete perfume and its reviews
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses: { "200": { description: OK }, "404": { $ref: "#/components/responses/NotFound" } }
+  /api/admin/perfumes/{id}/images:
+    post:
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      summary: Upload an image (PNG/JPEG/WEBP, max 2 MB)
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          multipart/form-data:
+            schema: { type: object, properties: { image: { type: string, format: binary } } }
+      responses: { "201": { description: Uploaded }, "400": { $ref: "#/components/responses/BadRequest" } }
+  /api/admin/orders:
+    get:
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      summary: List orders
+      parameters: [{ in: query, name: status, schema: { type: string, enum: [placed, shipped, delivered, cancelled] } }]
+      responses: { "200": { description: OK } }
+  /api/admin/orders/{id}:
+    patch:
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      summary: Change order status (cancel restores stock)
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { status: { type: string, enum: [placed, shipped, delivered, cancelled] } } }
+      responses: { "200": { description: OK }, "409": { description: Already cancelled } }
