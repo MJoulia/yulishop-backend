@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Secrets and generated files
+.env
+.env.*
+!.env.example
+coverage
